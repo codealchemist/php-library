@@ -10,6 +10,8 @@ define('DEVICE_TOKEN_URL', BASE_URL . '/device_tokens/');
 define('PUSH_URL', BASE_URL . '/push/');
 define('BROADCAST_URL',  BASE_URL . '/push/broadcast/');
 define('FEEDBACK_URL', BASE_URL . '/device_tokens/feedback/');
+define('RICH_PUSH_URL', BASE_URL . '/airmail/send/');
+define('USER_URL', BASE_URL . '/user/');
 
 
 // Raise when we get a 401 from the server.
@@ -178,6 +180,47 @@ class Airship {
         }
     }
 
+    /**
+     * Send rich push notification.
+     * All fields except message are optional, but at least one of tags, users 
+     * or aliases must be specified.
+     * The response to a successful API call has an HTTP 200 status code.
+     * 
+     * @author Alberto Miranda <alberto@glyder.co>
+     * @param string $message
+     * @param array $payload
+     * @param array $aliases
+     * @param string $title
+     * @param array $tags
+     * @param array $users
+     * @param string $contentType Default: "text/html"
+     * @param array $extra
+     * @throws AirshipFailure
+     */
+    public function richPush($message, $payload = null,  $aliases = null, $title = null, $tags = null, $users = null, $contentType = "text/html", $extra = null) {
+        $request = array(
+            'push' => $payload,
+            'tags' => $tags,
+            'users' => $users,
+            'aliases' => $aliases,
+            'title' => $title,
+            'message' => $message,
+            'content-type' => $contentType,
+            'extra' => $extra
+        );
+        
+        //remove empty request items and convert it to json
+        $filteredRequest = array_filter($request);
+        $jsonFilteredRequest = json_encode($filteredRequest);
+        
+        //send request to Urban Airship and get response
+        $response = $this->_request(RICH_PUSH_URL, 'POST', $jsonFilteredRequest, 'application/json');
+        $response_code = $response[0];
+        if ($response_code != 200) {
+            throw new AirshipFailure($response[1], $response_code);
+        }
+    }
+
     // Broadcast this payload to all users.
     public function broadcast($payload, $exclude_tokens=null) {
         if ($exclude_tokens != null) {
@@ -210,6 +253,58 @@ class Airship {
         return $results;
     }
 
-}
+    /**
+     * Creates rich push user with passed params.
+     * If a tag is included that does not already exist for your account, it 
+     * will be created. 
+     * The application’s device token must be included to use Apple’s Push 
+     * Notification Service to alert the user that a new message has arrived.
+     * 
+     * @author Alberto Miranda <alberto@glyder.co>
+     * @param array $deviceTokens
+     * @param string $alias
+     * @param array $tags
+     * @param string $udid A unique identifier for the User, can be your internal user guid or user id
+     * @return array Rich Push User data, contains username and password
+     * @throws AirshipFailure
+     */
+    public function createRichPushUser($deviceTokens, $alias = null, $tags = null, $udid = null) {
+        $request = array(
+            'device_tokens' => $deviceTokens,
+            'alias' => $alias,
+            'tags' => $tags,
+            'udid' => $udid
+        );
+        
+        //remove empty request items and convert it to json
+        $filteredRequest = array_filter($request);
+        $jsonFilteredRequest = json_encode($filteredRequest);
+        
+        //send request to Urban Airship and get response
+        $response = $this->_request(USER_URL, 'POST', $jsonFilteredRequest, 'application/json');
+        $response_code = $response[0];
+        if ($response_code != 201) {
+            throw new AirshipFailure($response[1], $response_code);
+        }
 
-?>
+        $user = json_decode($response[1]);
+        return $user;
+    }
+    
+    /**
+     * Delete passed Rich Push user.
+     * 
+     * @author Alberto Miranda <alberto@glyder.co>
+     * @param string $username
+     * @return boolean
+     * @throws AirshipFailure
+     */
+    public function deleteRichPushUser($username) {
+        //send request to Urban Airship and get response
+        $response = $this->_request(USER_URL . $username, 'DELETE', null);
+        $response_code = $response[0];
+        if ($response_code != 301) {
+            throw new AirshipFailure($response[1], $response_code);
+        }
+    }
+}
